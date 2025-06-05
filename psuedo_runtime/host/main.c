@@ -22,6 +22,11 @@ char *bh_read_file_to_buffer(const char *filename, uint32_t *ret_size)
     uint32_t file_size, buf_size, read_size;
     struct stat stat_buf;
 
+    if (!ret_size)
+    {
+        printf("ret_size.\n");
+        return NULL;
+    }
     if (!filename || !ret_size)
     {
         printf("Read file to buffer failed: invalid filename or ret size.\n");
@@ -79,9 +84,9 @@ int main(int argc, char **argv)
     }
     char *filename = argv[1];
 
-    uint32_t *ret_size;
-    char *res = bh_read_file_to_buffer(filename, ret_size);
-    printf("%s\n", res);
+    uint32_t ret_size = 0;
+    char *readedfile = bh_read_file_to_buffer(filename, &ret_size);
+    printf("%s\n", readedfile);
 
     TEEC_Result res;
     TEEC_Context ctx;
@@ -94,6 +99,17 @@ int main(int argc, char **argv)
     res = TEEC_InitializeContext(NULL, &ctx);
     if (res != TEEC_SUCCESS)
         errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+    TEEC_SharedMemory shm;
+    shm.size = ret_size;
+    shm.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+    if (TEEC_AllocateSharedMemory(&ctx, &shm) != TEEC_SUCCESS)
+    {
+        fprintf(stderr, "Shared memory allocation failed\n");
+        return -1;
+    }
+    memcpy(shm.buffer, readedfile, ret_size);
 
     /*
      * Open a session to the "psuedo runtime" TA, the TA will print "hello
@@ -112,6 +128,16 @@ int main(int argc, char **argv)
      * The value of command ID part and how the parameters are
      * interpreted is part of the interface provided by the TA.
      */
+
+    memset(&op, 0, sizeof(op));
+    op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+    op.params[0].memref.parent = &shm;
+    op.params[0].memref.size = shm.size;
+    op.params[0].memref.offset = 0;
+    res = TEEC_InvokeCommand(&sess, TA_PSUEDO_RUNTIME_CMD, &op, &err_origin);
+    if (res != TEEC_SUCCESS)
+        errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x",
+             res, err_origin);
 
     /* Clear the TEEC_Operation struct */
     memset(&op, 0, sizeof(op));

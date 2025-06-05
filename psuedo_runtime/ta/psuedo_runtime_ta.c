@@ -111,6 +111,7 @@ static TEE_Result psuedo_runtime(uint32_t param_types,
                                  TEE_Param params[4])
 {
     IMSG("psuedo runtime is called");
+    IMSG("readed files\n %s", params[0].memref.buffer);
     return TEE_SUCCESS;
 }
 
